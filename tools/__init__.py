@@ -1,3 +1,3 @@
-from tools.search import search
+from tools.search1 import search1
 
-tools=[search]
+tools=[search1]

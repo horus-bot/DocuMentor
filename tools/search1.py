@@ -8,7 +8,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
 @tool
-def search(query: str, file_path: str) -> str:
+def search1(query: str, file_path: str) -> str:
     """
     Tool to search content within a PDF using vector similarity.
 
