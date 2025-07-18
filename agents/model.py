@@ -28,12 +28,12 @@ If the information is not present in the uploaded document, politely let the use
 You are not a general-purpose chatbot — your focus is only on the user's uploaded files.
 
 """)
-    result=ai.invoke([systemPrompt]+state["messages"])
+    result=llm.invoke([systemPrompt]+state["messages"])
     return {"messages":result}
 
 if __name__=="__main__":
     from langchain_core.messages import HumanMessage
-    print(ai({"messages":HumanMessage(content="hey")}))
+    print(ai({"messages":[HumanMessage(content="hey")]}))
 
 
     
