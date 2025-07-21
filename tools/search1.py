@@ -1,68 +1,72 @@
-from langchain_core.tools import tool
 import os
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from typing import List
-from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+import tempfile
+from supabase import create_client, Client
 from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from pydantic import BaseModel
+from langchain_core.tools import tool
+from dotenv import load_dotenv
 
-@tool
-def search1(query: str, file_path: str) -> str:
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+BUCKET_NAME = "vectorstore"  # 
+FAISS_FILES = ["index.faiss", "index.pkl"]
+
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+def load_vectorstore_from_supabase(supabase_path: str) -> FAISS:
+    if not supabase_path.endswith('/'):
+        supabase_path += '/'
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for fname in FAISS_FILES:
+            full_path = f"{supabase_path}{fname}"
+            res = supabase.storage.from_(SUPABASE_BUCKET).download(full_path)
+            local_path = os.path.join(temp_dir, fname)
+            with open(local_path, "wb") as f:
+                f.write(res)
+        return FAISS.load_local(temp_dir, embedding_model, allow_dangerous_deserialization=True)
+
+
+
+class search_parameter(BaseModel):
+    query:str
+    supabase_path:str
+
+@tool(args_schema=search_parameter)
+def search1(parameter:search_parameter) -> str:
     """
     Tool to search content within a PDF using vector similarity.
 
-    Arguments:
-        query (str): The user query.
-        file_path (str): The path to the PDF file.
+    Always provide both parameters when calling this tool:
+    - 'query' (str): The user's search question or keywords.
+    - 'supabase_path' (str): The Supabase Storage folder path for the document's vector index files (e.g., the document ID or unique folder name). This is always available in your state as 'supabase_path'.
 
     Returns:
-        str: Matched context from the document.
+        str: Matched context from the document, or a message if no relevant information is found.
     """
-
-    
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File at {file_path} not found.")
-    if not file_path.endswith(".pdf"):
-        raise ValueError("Please provide a valid PDF file.")
-
-    
+    query = parameter.query
+    supabase_path = parameter.supabase_path
     try:
-        loader = PyPDFLoader(file_path)
-        pages = loader.load()
+        vectorstore = load_vectorstore_from_supabase(supabase_path)
+        if not vectorstore:
+            return "Sorry, I could not find the document or its vector index. Please check the document path."
+        retriever = vectorstore.as_retriever()
+        docs = retriever.invoke(query)
+        if not docs:
+            return "No relevant information found in the document for your query."
+        result = []
+        for i, doc in enumerate(docs):
+            result.append(f"Document {i + 1}:\n{doc.page_content}")
+
+        if not result:
+            raise ValueError("the vvector databsse is not found")  
+        else :
+            return "\n\n".join(result)  
+        
     except Exception as e:
-        raise RuntimeError(f"Error loading the PDF: {e}")
-
-    
-    try:
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=512,
-            chunk_overlap=64,
-            separators=["\n\n", "\n", ".", " "]
-        )
-        chunks = splitter.split_documents(pages)
-    except Exception as e:
-        raise RuntimeError(f"Could not split the document: {e}")
-
-    
-    try:
-        embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vectorstore = FAISS.from_documents(documents=chunks, embedding=embedding)
-    except Exception as e:
-        raise RuntimeError(f"Vectorization failed: {e}")
-
-    if not vectorstore:
-        raise ValueError("Vector store was not created.")
-
-   
-    retriever = vectorstore.as_retriever()
-    docs = retriever.invoke(query)
-
-    if not docs:
-        raise ValueError("No matching document found in the vector store.")
-
-    result = []
-    for i, doc in enumerate(docs):
-        result.append(f"Document {i + 1}:\n{doc.page_content}")
-
-    return "\n\n".join(result)
+        return f"Error searching the document: {str(e)}"

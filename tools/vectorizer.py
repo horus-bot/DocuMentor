@@ -7,14 +7,14 @@ from langchain_community.vectorstores import FAISS
 from langchain.docstore.document import Document
 from supabase import create_client
 from PyPDF2 import PdfReader
-from dotenv import load_dotenv
 
 
-load_dotenv()
+
+
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-SUPABASE_BUCKET = os.environ.get("SUPABASE_BUCKET")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET")
 
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)

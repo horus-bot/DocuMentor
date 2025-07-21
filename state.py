@@ -4,3 +4,4 @@ from langchain_core.messages import BaseMessage
 
 class AgenState(TypedDict):
     messages:Annotated[Sequence[BaseMessage],add_messages]
+    supabase_path:str
